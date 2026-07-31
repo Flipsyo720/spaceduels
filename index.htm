@@ -377,10 +377,10 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            background-color: rgba(0, 0, 0, 0.45);
+            background-color: rgba(0, 0, 0, 0.6);
             z-index: 10;
             border-radius: 50%;
-            backdrop-filter: blur(2px);
+            backdrop-filter: blur(3px);
             padding: 20px;
         }
 
@@ -390,13 +390,24 @@
             align-items: center;
             width: 100%;
             max-width: 580px;
+            background: linear-gradient(180deg, rgba(8, 11, 18, 0.94), rgba(3, 4, 8, 0.97));
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.03) inset, 0 10px 50px rgba(0, 0, 0, 0.7), 0 0 30px rgba(0, 0, 0, 0.5);
+            padding: 26px 22px;
+            animation: menuCardIn 0.22s ease;
+        }
+
+        @keyframes menuCardIn {
+            from { opacity: 0; transform: scale(0.96) translateY(6px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
         }
 
         #settings-menu, #controls-menu, #victory-menu, #offline-menu, #online-menu, #visuals-menu { 
             display: none; 
             max-height: 82vh;
             overflow-y: auto;
-            padding: 15px 10px;
+            padding: 22px 18px;
         }
 
         #settings-menu::-webkit-scrollbar, #controls-menu::-webkit-scrollbar {
@@ -627,6 +638,29 @@
             display: none;
             text-shadow: 0 0 6px #000000;
             line-height: 1.6;
+        }
+
+        /* ==========================================================================
+           MATCH START COUNTDOWN OVERLAY
+           ========================================================================== */
+        #countdown-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 8;
+            pointer-events: none;
+            font-size: 130px;
+            font-weight: bold;
+            color: var(--accent-color);
+            text-shadow: 0 0 30px var(--accent-color), 0 0 60px var(--accent-color);
+            animation: countdownPulse 0.8s ease-out;
+        }
+
+        @keyframes countdownPulse {
+            from { opacity: 0; transform: scale(1.6); }
+            to { opacity: 1; transform: scale(1); }
         }
 
         /* ==========================================================================
@@ -872,6 +906,10 @@
                     <span class="stat-value" id="stat-p1-acc">0.0%</span>
                 </div>
                 <div class="stat-row">
+                    <span class="stat-label">HULL:</span>
+                    <span class="stat-value" id="stat-p1-hull" style="color:#00ff66;">4/4</span>
+                </div>
+                <div class="stat-row">
                     <span class="stat-label">STATUS:</span>
                     <span class="stat-value" id="stat-p1-status" style="color:#00ff66;">READY</span>
                 </div>
@@ -888,6 +926,7 @@
                     <div class="title">SPACEWAR!</div>
                     <div class="menu-text" id="main-menu-tagline">Choose your battle</div>
                     <button class="btn btn-special" id="btn-resume-match" style="display:none; width:100%;">&#9654; RESUME MATCH</button>
+                    <button class="btn btn-danger" id="btn-leave-match" style="display:none; width:100%;">&#128682; LEAVE MATCH</button>
                     <div class="btn-group">
                         <button class="btn btn-ranked" id="btn-open-online-ranked">&#9876; ONLINE RANKED</button>
                         <button class="btn btn-casual" id="btn-open-online-casual">&#127918; ONLINE CASUAL</button>
@@ -1063,8 +1102,14 @@
                                 <option value="cruiser">Cruiser (Heavy)</option>
                                 <option value="saucer">Saucer (Experimental)</option>
                                 <option value="dart">Dart (Interceptor)</option>
+                                <option value="falcon">Falcon (Swept-Wing)</option>
+                                <option value="tank">Tank (Bulwark)</option>
+                                <option value="scout">Scout (Featherweight)</option>
+                                <option value="raptor">Raptor (Predator)</option>
                             </select>
                         </div>
+                        <div class="setting-item"><label>Torpedo Color</label><input type="color" id="inp-vis-torpcolor"></div>
+                        <div class="setting-item"><label>Engine Trail Color</label><input type="color" id="inp-vis-trailcolor"></div>
                         <div class="setting-item">
                             <label>Overall Game Theme</label>
                             <select id="inp-vis-theme">
@@ -1158,6 +1203,9 @@
             <!-- HEADS UP DISPLAY (IN-GAME) -->
             <div id="inGameHUD" class="in-game-instructions"></div>
 
+            <!-- MATCH START COUNTDOWN -->
+            <div id="countdown-overlay">5</div>
+
             <!-- PRIMARY GAME CANVAS -->
             <canvas id="gameCanvas" width="700" height="700"></canvas>
         </div>
@@ -1196,6 +1244,8 @@
             P2_COLOR: '#9b30ff',
             P1_SHIP: 'wedge',
             P2_SHIP: 'needle',
+            P1_TORPEDO_COLOR: '#ffdd00',
+            P1_TRAIL_COLOR: '#ff5500',
             STAR_COLOR: '#ffffff',
             BG_COLOR: '#000000',
             
@@ -1212,8 +1262,11 @@
             // Mode & Matchmaking Parameters
             MATCH_TYPE: 'offline_ai',  // 'offline_ai','offline_friend','online_ranked','online_casual_1v1','online_casual_ffa'
             GAME_MODE: 'classic',      // 'classic', 'heatseeker', 'zerogravity'
-            IS_ONLINE: false           // whether the active match should affect MMR/rank
+            IS_ONLINE: false,          // whether the active match has a simulated online opponent
+            IS_RANKED: false           // whether the active match should affect MMR/rank (Ranked only)
         };
+
+        const MAX_HP = 4;
 
         /* ==========================================================================
            KEYBINDS STATE (ORIGINAL PRESERVED)
@@ -1261,7 +1314,11 @@
            RANK & MMR SYSTEM
            Bronze -> Silver -> Gold -> Platinum -> Elite -> Diamond -> Champion -> Legend
            Each tier has 3 divisions; winning climbs a division (or promotes a
-           tier), losing drops a division (or demotes a tier).
+           tier), losing drops a division (or demotes a tier). New profiles are
+           Unranked until 10 RANKED matches are played; the average performance
+           across those placement matches sets the starting tier/division.
+           Only Online Ranked matches touch any of this — Casual and FFA never
+           change MMR, rank, or placement progress.
            ========================================================================== */
         const RANK_TIERS = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Elite', 'Diamond', 'Champion', 'Legend'];
         const DIVISION_LABELS = ['I', 'II', 'III'];
@@ -1269,26 +1326,61 @@
             Bronze: '#cd7f32', Silver: '#c0c8d1', Gold: '#ffd700', Platinum: '#66e0c0',
             Elite: '#a35bff', Diamond: '#5ad1ff', Champion: '#ff8c42', Legend: '#ff3b5c'
         };
+        const UNRANKED_COLOR = '#999999';
+        const PLACEMENT_MATCHES_REQUIRED = 10;
+        const MMR_PER_DIVISION = 100;      // width of one division band
+        const MMR_PER_TIER = MMR_PER_DIVISION * 3;
 
-        const PLAYER_PROFILE = { name: 'YOU', mmr: 1000, tierIndex: 0, division: 3, wins: 0, losses: 0 };
+        const PLAYER_PROFILE = {
+            name: 'YOU', mmr: 1000, tierIndex: 0, division: 3, wins: 0, losses: 0,
+            isPlaced: false, placementsPlayed: 0, placementWins: 0
+        };
 
         function getRankLabel(profile) {
+            if (!profile.isPlaced) return `Unranked (${profile.placementsPlayed}/${PLACEMENT_MATCHES_REQUIRED})`;
             return `${RANK_TIERS[profile.tierIndex]} ${DIVISION_LABELS[profile.division - 1]}`;
         }
 
         function getRankColor(profile) {
+            if (!profile.isPlaced) return UNRANKED_COLOR;
             return RANK_COLORS[RANK_TIERS[profile.tierIndex]];
         }
 
-        // Applies a ranked/casual match result to a profile, moving it up or down
-        // one division (promoting/demoting a tier at the boundaries), and returns
-        // the signed MMR delta so the UI can display it.
-        function applyMatchResult(profile, won) {
+        // Converts an accumulated MMR value into a starting tier/division,
+        // used once at the end of the 10-match placement series.
+        function mmrToRank(mmr) {
+            let tierIndex = Math.floor(mmr / MMR_PER_TIER);
+            tierIndex = Math.max(0, Math.min(RANK_TIERS.length - 1, tierIndex));
+            let bandInTier = Math.floor((mmr - tierIndex * MMR_PER_TIER) / MMR_PER_DIVISION);
+            bandInTier = Math.max(0, Math.min(2, bandInTier));
+            const division = 3 - bandInTier; // lowest MMR band -> division III, highest -> division I
+            return { tierIndex, division };
+        }
+
+        // Records the result of a RANKED match only. During the first 10 ranked
+        // matches, MMR accumulates quietly while the profile stays "Unranked";
+        // once placements finish, the final MMR sets the starting tier/division
+        // and normal division-by-division climbing/demotion begins. Returns the
+        // signed MMR delta so the UI can display it.
+        function recordRankedResult(profile, won) {
             const delta = won ? (18 + Math.floor(Math.random() * 10)) : -(14 + Math.floor(Math.random() * 8));
             profile.mmr = Math.max(0, profile.mmr + delta);
+            if (won) profile.wins++; else profile.losses++;
+
+            if (!profile.isPlaced) {
+                profile.placementsPlayed++;
+                if (won) profile.placementWins++;
+
+                if (profile.placementsPlayed >= PLACEMENT_MATCHES_REQUIRED) {
+                    const calc = mmrToRank(profile.mmr);
+                    profile.tierIndex = calc.tierIndex;
+                    profile.division = calc.division;
+                    profile.isPlaced = true;
+                }
+                return delta;
+            }
 
             if (won) {
-                profile.wins++;
                 profile.division--;
                 if (profile.division < 1) {
                     if (profile.tierIndex < RANK_TIERS.length - 1) {
@@ -1299,7 +1391,6 @@
                     }
                 }
             } else {
-                profile.losses++;
                 profile.division++;
                 if (profile.division > 3) {
                     if (profile.tierIndex > 0) {
@@ -1322,7 +1413,7 @@
             });
             ['main-rank-mmr', 'online-rank-mmr'].forEach(id => {
                 const el = document.getElementById(id);
-                if (el) el.innerText = PLAYER_PROFILE.mmr;
+                if (el) el.innerText = PLAYER_PROFILE.isPlaced ? PLAYER_PROFILE.mmr : '\u2014 (placement hidden)';
             });
         }
 
@@ -1336,8 +1427,9 @@
            ========================================================================== */
         const SAVE_KEY = 'spacewar_save_v1';
         const SAVE_CONFIG_KEYS = ['GRAVITY', 'THRUST', 'TURN_SPEED', 'MAX_SPEED', 'FRICTION',
-            'TORPEDO_SPEED', 'TORPEDO_LIFE', 'STAR_MASS', 'P1_COLOR', 'P1_SHIP', 'STAR_COLOR',
-            'BG_COLOR', 'SFX_ENABLED', 'CRT_HEAVINESS', 'PARTICLES_MODE', 'THEME_NAME', 'FONT_FAMILY'];
+            'TORPEDO_SPEED', 'TORPEDO_LIFE', 'STAR_MASS', 'P1_COLOR', 'P1_SHIP', 'P1_TORPEDO_COLOR',
+            'P1_TRAIL_COLOR', 'STAR_COLOR', 'BG_COLOR', 'SFX_ENABLED', 'CRT_HEAVINESS', 'PARTICLES_MODE',
+            'THEME_NAME', 'FONT_FAMILY'];
 
         function saveGameData() {
             try {
@@ -1379,10 +1471,12 @@
 
             PLAYER_PROFILE.mmr = 1000; PLAYER_PROFILE.tierIndex = 0; PLAYER_PROFILE.division = 3;
             PLAYER_PROFILE.wins = 0; PLAYER_PROFILE.losses = 0;
+            PLAYER_PROFILE.isPlaced = false; PLAYER_PROFILE.placementsPlayed = 0; PLAYER_PROFILE.placementWins = 0;
 
             CONFIG.GRAVITY = 0.05; CONFIG.THRUST = 0.08; CONFIG.TURN_SPEED = 0.08; CONFIG.MAX_SPEED = 6;
             CONFIG.FRICTION = 0.999; CONFIG.TORPEDO_SPEED = 7; CONFIG.TORPEDO_LIFE = 100; CONFIG.STAR_MASS = 15;
             CONFIG.P1_COLOR = '#ffdd00'; CONFIG.P1_SHIP = 'wedge';
+            CONFIG.P1_TORPEDO_COLOR = '#ffdd00'; CONFIG.P1_TRAIL_COLOR = '#ff5500';
             CONFIG.STAR_COLOR = '#ffffff'; CONFIG.BG_COLOR = '#000000';
             CONFIG.SFX_ENABLED = true; CONFIG.CRT_HEAVINESS = 2; CONFIG.PARTICLES_MODE = 'high';
             CONFIG.THEME_NAME = 'dark'; CONFIG.FONT_FAMILY = 'monospace';
@@ -1392,6 +1486,7 @@
             BINDS.menu = 'Escape';
 
             p1.type = CONFIG.P1_SHIP; p1.color = CONFIG.P1_COLOR;
+            p1.torpedoColor = CONFIG.P1_TORPEDO_COLOR; p1.trailColor = CONFIG.P1_TRAIL_COLOR;
             document.body.setAttribute('data-theme', 'dark');
             applyCRTHeaviness(2);
 
@@ -1438,7 +1533,7 @@
            fully playable today and only the transport needs swapping later.
            ========================================================================== */
         const ONLINE_BOT_NAMES = ['Orion', 'Vega', 'Nyx', 'Zephyr', 'Kestrel', 'Talon', 'Rhea', 'Juno', 'Draven', 'Astra', 'Halcyon', 'Cipher', 'Rigel', 'Lyra', 'Corvus', 'Phobos'];
-        const ONLINE_SHIP_POOL = ['wedge', 'needle', 'cruiser', 'saucer', 'dart'];
+        const ONLINE_SHIP_POOL = ['wedge', 'needle', 'cruiser', 'saucer', 'dart', 'falcon', 'tank', 'scout', 'raptor'];
         const ONLINE_COLOR_POOL = ['#ff5555', '#55ff88', '#55c7ff', '#ffd23f', '#ff66c4', '#9b30ff', '#00e5ff', '#ff8800'];
 
         let ONLINE_PLAYERS = [];
@@ -1574,6 +1669,24 @@
                 filter.connect(gain);
                 gain.connect(this.ctx.destination);
                 noise.start();
+            }
+
+            playHit() {
+                if (!this.enabled || !this.ctx) return;
+                this.resume();
+                // Short sharp "clink" for a non-lethal torpedo hit — much
+                // shorter and higher-pitched than the full explosion sound.
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(320, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(120, this.ctx.currentTime + 0.09);
+                gain.gain.setValueAtTime(0.18, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.1);
             }
 
             playThrust() {
@@ -1823,6 +1936,30 @@
                 visShipEl.dataset.listener = true;
             }
 
+            const visTorpEl = document.getElementById('inp-vis-torpcolor');
+            visTorpEl.value = CONFIG.P1_TORPEDO_COLOR;
+            p1.torpedoColor = CONFIG.P1_TORPEDO_COLOR;
+            if (!visTorpEl.dataset.listener) {
+                visTorpEl.addEventListener('input', (e) => {
+                    CONFIG.P1_TORPEDO_COLOR = e.target.value;
+                    p1.torpedoColor = e.target.value;
+                    saveGameData();
+                });
+                visTorpEl.dataset.listener = true;
+            }
+
+            const visTrailEl = document.getElementById('inp-vis-trailcolor');
+            visTrailEl.value = CONFIG.P1_TRAIL_COLOR;
+            p1.trailColor = CONFIG.P1_TRAIL_COLOR;
+            if (!visTrailEl.dataset.listener) {
+                visTrailEl.addEventListener('input', (e) => {
+                    CONFIG.P1_TRAIL_COLOR = e.target.value;
+                    p1.trailColor = e.target.value;
+                    saveGameData();
+                });
+                visTrailEl.dataset.listener = true;
+            }
+
             const visThemeEl = document.getElementById('inp-vis-theme');
             visThemeEl.value = CONFIG.THEME_NAME;
             if (!visThemeEl.dataset.listener) {
@@ -1909,11 +2046,13 @@
             CONFIG.GRAVITY = 0.05; CONFIG.THRUST = 0.08; CONFIG.TURN_SPEED = 0.08; CONFIG.MAX_SPEED = 6;
             CONFIG.FRICTION = 0.999; CONFIG.TORPEDO_SPEED = 7; CONFIG.TORPEDO_LIFE = 100; CONFIG.STAR_MASS = 15;
             CONFIG.P1_COLOR = '#ffdd00'; CONFIG.P2_COLOR = '#9b30ff'; CONFIG.P1_SHIP = 'wedge'; CONFIG.P2_SHIP = 'needle';
+            CONFIG.P1_TORPEDO_COLOR = '#ffdd00'; CONFIG.P1_TRAIL_COLOR = '#ff5500';
             CONFIG.STAR_COLOR = '#ffffff'; CONFIG.BG_COLOR = '#000000';
             CONFIG.CRT_HEAVINESS = 2; CONFIG.THEME_NAME = 'dark'; CONFIG.FONT_FAMILY = 'monospace';
             CONFIG.SFX_ENABLED = true; CONFIG.PARTICLES_MODE = 'high';
             
             p1.type = 'wedge'; p1.color = '#ffdd00';
+            p1.torpedoColor = '#ffdd00'; p1.trailColor = '#ff5500';
             p2.type = 'needle'; p2.color = '#9b30ff';
             document.body.setAttribute('data-theme', 'dark');
             document.body.style.setProperty('--font-family', 'monospace');
@@ -2080,6 +2219,22 @@
                 const vy = Math.sin(angle) * speed;
                 const size = Math.random() * 3 + 1;
                 const life = Math.floor(Math.random() * 35 + 20);
+                particles.push(new Particle(x, y, vx, vy, color, size, life, 'debris'));
+            }
+        }
+
+        // A small, quick spark burst for a non-lethal torpedo hit — distinct
+        // from the full createExplosion() used when a ship's hull is destroyed.
+        function createHitSpark(x, y, color) {
+            if (CONFIG.PARTICLES_MODE === 'off') return;
+            const count = CONFIG.PARTICLES_MODE === 'high' ? 12 : (CONFIG.PARTICLES_MODE === 'medium' ? 7 : 4);
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 2.5 + 0.5;
+                const vx = Math.cos(angle) * speed;
+                const vy = Math.sin(angle) * speed;
+                const size = Math.random() * 1.8 + 0.6;
+                const life = Math.floor(Math.random() * 12 + 8);
                 particles.push(new Particle(x, y, vx, vy, color, size, life, 'debris'));
             }
         }
@@ -2289,9 +2444,13 @@
             constructor(type, color, playerID) {
                 this.type = type;
                 this.color = color;
+                this.torpedoColor = color;
+                this.trailColor = '#ff5500';
                 this.playerID = playerID;
                 this.cooldown = 0;
                 this.dead = false;
+                this.hp = MAX_HP;
+                this.hitFlash = 0;
                 this.resetPosition();
             }
 
@@ -2300,6 +2459,8 @@
 
                 const binds = BINDS[this.playerID];
                 let isThrusting = false;
+
+                if (this.hitFlash > 0) this.hitFlash--;
 
                 if (keys[binds.left]) this.angle -= CONFIG.TURN_SPEED;
                 if (keys[binds.right]) this.angle += CONFIG.TURN_SPEED;
@@ -2316,7 +2477,7 @@
                         const exY = this.y - Math.sin(this.angle) * 12;
                         const evx = -Math.cos(this.angle) * 2 + (Math.random() - 0.5);
                         const evy = -Math.sin(this.angle) * 2 + (Math.random() - 0.5);
-                        particles.push(new Particle(exX, exY, evx, evy, '#ff5500', Math.random()*3 + 1, 15, 'thrust'));
+                        particles.push(new Particle(exX, exY, evx, evy, this.trailColor || '#ff5500', Math.random()*3 + 1, 15, 'thrust'));
                     }
                 }
 
@@ -2342,7 +2503,7 @@
                     const muzzleY = this.y + Math.sin(this.angle) * 16;
                     const tvx = this.vx + Math.cos(this.angle) * CONFIG.TORPEDO_SPEED;
                     const tvy = this.vy + Math.sin(this.angle) * CONFIG.TORPEDO_SPEED;
-                    torpedoes.push(new Torpedo(muzzleX, muzzleY, tvx, tvy, this.playerID, this.color));
+                    torpedoes.push(new Torpedo(muzzleX, muzzleY, tvx, tvy, this.playerID, this.torpedoColor || this.color));
                     this.cooldown = 20;
                 }
 
@@ -2390,6 +2551,7 @@
                 const velEl = document.getElementById(`stat-p${this.playerID}-vel`);
                 const thrustEl = document.getElementById(`stat-p${this.playerID}-thrust`);
                 const accEl = document.getElementById(`stat-p${this.playerID}-acc`);
+                const hullEl = document.getElementById(`stat-p${this.playerID}-hull`);
                 const statusEl = document.getElementById(`stat-p${this.playerID}-status`);
                 const winsEl = document.getElementById(`stat-p${this.playerID}-wins`);
 
@@ -2402,6 +2564,10 @@
                     const stats = STATS[this.playerID];
                     const acc = stats.shots > 0 ? ((stats.hits / stats.shots) * 100).toFixed(1) : "0.0";
                     accEl.innerText = acc + "%";
+                }
+                if (hullEl) {
+                    hullEl.innerText = `${this.hp}/${MAX_HP}`;
+                    hullEl.style.color = this.hp <= 1 ? "#ff3333" : (this.hp <= 2 ? "#ffcc00" : "#00ff66");
                 }
                 if (statusEl) {
                     statusEl.innerText = this.dead ? "DESTROYED" : "READY";
@@ -2422,7 +2588,7 @@
                 ctx.save();
                 ctx.translate(this.x, this.y);
                 ctx.rotate(this.angle);
-                ctx.strokeStyle = this.color;
+                ctx.strokeStyle = this.hitFlash > 0 ? '#ffffff' : this.color;
                 ctx.lineWidth = CONFIG.THEME_NAME === 'vector' ? 2.5 : 2;
                 if (CONFIG.THEME_NAME === 'vector' || CONFIG.THEME_NAME === 'cyberpunk') {
                     ctx.shadowBlur = 10;
@@ -2442,6 +2608,14 @@
                     ctx.moveTo(4, 0); ctx.arc(0, 0, 4, 0, Math.PI * 2);
                 } else if (this.type === 'dart') {
                     ctx.moveTo(20, 0); ctx.lineTo(-10, -3); ctx.lineTo(-14, -12); ctx.lineTo(-4, -1); ctx.lineTo(-4, 1); ctx.lineTo(-14, 12); ctx.lineTo(-10, 3);
+                } else if (this.type === 'falcon') {
+                    ctx.moveTo(18, 0); ctx.lineTo(-6, -6); ctx.lineTo(-16, -14); ctx.lineTo(-10, -2); ctx.lineTo(-16, 0); ctx.lineTo(-10, 2); ctx.lineTo(-16, 14); ctx.lineTo(-6, 6);
+                } else if (this.type === 'tank') {
+                    ctx.moveTo(14, 0); ctx.lineTo(6, -9); ctx.lineTo(-8, -9); ctx.lineTo(-14, 0); ctx.lineTo(-8, 9); ctx.lineTo(6, 9);
+                } else if (this.type === 'scout') {
+                    ctx.moveTo(14, 0); ctx.lineTo(-8, -8); ctx.lineTo(-4, 0); ctx.lineTo(-8, 8);
+                } else if (this.type === 'raptor') {
+                    ctx.moveTo(16, 0); ctx.lineTo(4, -3); ctx.lineTo(-6, -16); ctx.lineTo(-2, -4); ctx.lineTo(-10, 0); ctx.lineTo(-2, 4); ctx.lineTo(-6, 16); ctx.lineTo(4, 3);
                 }
                 ctx.closePath(); ctx.stroke();
 
@@ -2449,13 +2623,26 @@
                 if (keys[BINDS[this.playerID].thrust]) {
                     ctx.beginPath();
                     ctx.moveTo(-6, 0); ctx.lineTo(-15 - Math.random() * 6, -4); ctx.lineTo(-15 - Math.random() * 6, 4);
-                    ctx.closePath(); ctx.strokeStyle = '#ff5500'; ctx.stroke();
+                    ctx.closePath(); ctx.strokeStyle = this.trailColor || '#ff5500'; ctx.stroke();
                 }
                 // Draw reverse-thrust nose flame when active
                 if (keys[BINDS[this.playerID].reverse]) {
                     ctx.beginPath();
                     ctx.moveTo(11, 0); ctx.lineTo(20 + Math.random() * 5, -3); ctx.lineTo(20 + Math.random() * 5, 3);
                     ctx.closePath(); ctx.strokeStyle = '#00c8ff'; ctx.stroke();
+                }
+                ctx.restore();
+
+                // Hull integrity pips — 4 small notches above the ship showing
+                // remaining hits before destruction (torpedo damage only).
+                ctx.save();
+                const pipSpacing = 7;
+                const pipStartX = this.x - ((MAX_HP - 1) * pipSpacing) / 2;
+                for (let i = 0; i < MAX_HP; i++) {
+                    ctx.beginPath();
+                    ctx.arc(pipStartX + i * pipSpacing, this.y - 22, 2.2, 0, Math.PI * 2);
+                    ctx.fillStyle = i < this.hp ? this.color : 'rgba(255,255,255,0.15)';
+                    ctx.fill();
                 }
                 ctx.restore();
             }
@@ -2470,6 +2657,7 @@
 
             resetPosition() {
                 this.dead = false; this.vx = 0; this.vy = 0; this.cooldown = 0;
+                this.hp = MAX_HP; this.hitFlash = 0;
                 const cx = canvas.width / 2, cy = canvas.height / 2;
                 // Players 1 & 2 keep their original duel positions; 3 & 4 spawn
                 // at the top/bottom compass points for Free-For-All matches.
@@ -2554,6 +2742,7 @@
             CONFIG.SCORE_MODE = document.getElementById('inp-offline-firstto').value;
             CONFIG.GAME_MODE = document.getElementById('inp-offline-mode').value;
             CONFIG.IS_ONLINE = false;
+            CONFIG.IS_RANKED = false;
 
             CONFIG.P2_SHIP = 'needle';
             CONFIG.P2_COLOR = '#9b30ff';
@@ -2597,6 +2786,7 @@
                 CONFIG.SCORE_MODE = document.getElementById('inp-online-firstto').value;
                 CONFIG.GAME_MODE = document.getElementById('inp-online-mode').value;
                 CONFIG.IS_ONLINE = true;
+                CONFIG.IS_RANKED = (onlineContext === 'ranked');
 
                 ACTIVE_SHIPS = isFFA ? [p1, p2, p3, p4] : [p1, p2];
                 AI_CONTROLLED_IDS = ACTIVE_SHIPS.filter(s => s.playerID !== 1).map(s => s.playerID);
@@ -2614,12 +2804,62 @@
             launchOnlineMatch();
         });
 
+        /* ==========================================================================
+           MATCH START COUNTDOWN (5-4-3-2-1-GO)
+           Runs before ships can move/fire, at the start of a fresh match and
+           again after each point is scored mid-match. Resuming a paused match
+           does NOT re-trigger it — only a genuine reset of ship positions does.
+           ========================================================================== */
+        let countdownValue = 0;
+        let countdownTimer = null;
+
+        function restartPulseAnimation(el) {
+            el.style.animation = 'none';
+            void el.offsetWidth; // force reflow so the animation restarts
+            el.style.animation = 'countdownPulse 0.8s ease-out';
+        }
+
+        function startCountdown(onComplete) {
+            gameState = 'COUNTDOWN';
+            countdownValue = 5;
+            const el = document.getElementById('countdown-overlay');
+            el.style.display = 'flex';
+            el.innerText = countdownValue;
+            restartPulseAnimation(el);
+            SFX.playMenuClick();
+
+            if (countdownTimer) clearInterval(countdownTimer);
+            countdownTimer = setInterval(() => {
+                countdownValue--;
+                if (countdownValue > 0) {
+                    el.innerText = countdownValue;
+                    restartPulseAnimation(el);
+                    SFX.playMenuClick();
+                } else if (countdownValue === 0) {
+                    el.innerText = 'GO!';
+                    restartPulseAnimation(el);
+                    SFX.playThrust();
+                } else {
+                    clearInterval(countdownTimer);
+                    countdownTimer = null;
+                    el.style.display = 'none';
+                    gameState = 'PLAYING';
+                    if (onComplete) onComplete();
+                }
+            }, 800);
+        }
+
+        function stopCountdown() {
+            if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+            document.getElementById('countdown-overlay').style.display = 'none';
+        }
+
         function startGame() {
             SFX.playMenuClick();
-            gameState = 'PLAYING';
             menuUI.style.display = 'none';
             hudUI.style.display = 'block';
             document.getElementById('btn-resume-match').style.display = 'none';
+            document.getElementById('btn-leave-match').style.display = 'none';
             updateHUD();
 
             if (!roundStarted) {
@@ -2631,6 +2871,10 @@
                 matchStartTime = Date.now();
                 resetRound();
                 roundStarted = true;
+                startCountdown();
+            } else {
+                // Resuming an already-started (paused) match — jump straight back in
+                gameState = 'PLAYING';
             }
         }
 
@@ -2640,12 +2884,31 @@
             menuUI.style.display = 'flex';
             hudUI.style.display = 'none';
             switchMenu('MAIN');
-            document.getElementById('btn-resume-match').style.display = roundStarted ? 'inline-flex' : 'none';
+            const show = roundStarted ? 'inline-flex' : 'none';
+            document.getElementById('btn-resume-match').style.display = show;
+            document.getElementById('btn-leave-match').style.display = show;
         }
 
         document.getElementById('btn-resume-match').addEventListener('click', () => {
             if (roundStarted) startGame();
         });
+
+        // Fully abandons the current match (no result recorded) and returns
+        // cleanly to the main menu.
+        function leaveMatch() {
+            SFX.playMenuClick();
+            stopCountdown();
+            roundStarted = false;
+            isGameOver = false;
+            torpedoes = [];
+            particles = [];
+            gameState = 'MENU';
+            document.getElementById('btn-resume-match').style.display = 'none';
+            document.getElementById('btn-leave-match').style.display = 'none';
+            switchMenu('MAIN');
+        }
+
+        document.getElementById('btn-leave-match').addEventListener('click', leaveMatch);
 
         function triggerRoundEnd() {
             if (!isGameOver) {
@@ -2704,11 +2967,11 @@
             const secs = String(elapsedSec % 60).padStart(2, '0');
             document.getElementById('sum-duration').innerText = `${mins}:${secs}`;
 
-            // MMR & Rank Update — every ONLINE match affects rank; offline never does
+            // MMR & Rank Update — ONLY Online Ranked matches affect rank; Casual, FFA, and Offline never do
             const deltaDisplay = document.getElementById('victory-rank-delta');
-            if (CONFIG.IS_ONLINE) {
+            if (CONFIG.IS_RANKED) {
                 const won = (winnerID === 1);
-                const delta = applyMatchResult(PLAYER_PROFILE, won);
+                const delta = recordRankedResult(PLAYER_PROFILE, won);
                 const deltaEl = document.getElementById('victory-mmr-delta');
                 deltaEl.innerText = (delta >= 0 ? '+' : '') + delta;
                 deltaEl.className = delta >= 0 ? 'rank-delta-up' : 'rank-delta-down';
@@ -2829,12 +3092,22 @@
                         if (!ship.dead && ship.playerID !== t.ownerID) {
                             const dx = ship.x - t.x; const dy = ship.y - t.y;
                             if (Math.sqrt(dx * dx + dy * dy) < 16) {
-                                ship.explode();
-                                SCORES[t.ownerID]++;
                                 STATS[t.ownerID].hits++;
-                                STATS[t.ownerID].wins++;
+                                ship.hp--;
+                                ship.hitFlash = 10;
                                 hit = true;
-                                triggerRoundEnd();
+
+                                if (ship.hp <= 0) {
+                                    // Lethal — 4th hit destroys the hull
+                                    ship.explode();
+                                    SCORES[t.ownerID]++;
+                                    STATS[t.ownerID].wins++;
+                                    triggerRoundEnd();
+                                } else {
+                                    // Non-lethal chip damage — spark instead of a full explosion
+                                    createHitSpark(ship.x, ship.y, ship.color);
+                                    SFX.playHit();
+                                }
                             }
                         }
                     });
@@ -2938,7 +3211,10 @@
 
                 if (isGameOver) {
                     gameOverTimer--;
-                    if (gameOverTimer <= 0 && gameState === 'PLAYING') resetRound();
+                    if (gameOverTimer <= 0 && gameState === 'PLAYING') {
+                        resetRound();
+                        startCountdown();
+                    }
                 }
             }
 
