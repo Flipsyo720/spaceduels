@@ -5,9 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NotFlipsyaa's Space Duels</title>
     <style>
-        /* ==========================================================================
-           BASE THEME AND ROOT CSS VARIABLES
-           ========================================================================== */
         :root {
             --bg-color: #050505;
             --text-color: #e0e0e0;
@@ -21,9 +18,6 @@
             --crt-rgb-shift: 0px;
         }
 
-        /* ==========================================================================
-           COLOR THEME PRESETS
-           ========================================================================== */
         [data-theme="green"] {
             --bg-color: #000c04;
             --text-color: #00ff66;
@@ -112,9 +106,6 @@
             --border-color: #172a45;
         }
 
-        /* ==========================================================================
-           GLOBAL LAYOUT & WINDOW STYLING
-           ========================================================================== */
         * {
             box-sizing: border-box;
         }
@@ -191,10 +182,6 @@
             flex-shrink: 0;
             visibility: hidden;
         }
-
-        /* ==========================================================================
-           SIDE PLAYER INSPECTORS
-           ========================================================================== */
         .inspector-panel {
             width: 240px;
             height: 660px;
@@ -339,9 +326,6 @@
             display: none; /* Hide side panels when circle takes full screen */
         }
 
-        /* ==========================================================================
-           CRT EFFECTS OVERLAY (DYNAMIC HEAVINESS)
-           ========================================================================== */
         .crt::before {
             content: " ";
             display: block;
@@ -373,10 +357,7 @@
             transform: perspective(800px) rotateX(1deg) scale(0.99);
             border-radius: 48% !important;
         }
-
-        /* ==========================================================================
-           MENU OVERLAYS & NAVIGATION
-           ========================================================================== */
+        
         #menu {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -704,9 +685,6 @@
             line-height: 1.6;
         }
 
-        /* ==========================================================================
-           MATCH START COUNTDOWN OVERLAY
-           ========================================================================== */
         #countdown-overlay {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -727,9 +705,6 @@
             to { opacity: 1; transform: scale(1); }
         }
 
-        /* ==========================================================================
-           MODE SELECT BUTTONS (MAIN MENU: ONLINE RANKED / CASUAL / OFFLINE)
-           ========================================================================== */
         .btn-ranked {
             border-color: #ff3355;
             color: #ff3355;
@@ -759,9 +734,6 @@
             text-align: center;
         }
 
-        /* ==========================================================================
-           RANK / MMR BADGE DISPLAY
-           ========================================================================== */
         .rank-badge-mini {
             margin-top: 14px;
             padding: 8px 18px;
@@ -789,9 +761,6 @@
         .rank-delta-up { color: #00ff66; }
         .rank-delta-down { color: #ff3355; }
 
-        /* ==========================================================================
-           ONLINE PLAYERS PRESENCE COMPONENT
-           ========================================================================== */
         .online-players-panel {
             width: 100%;
             margin-top: 16px;
@@ -938,9 +907,6 @@
             color: #cccccc;
         }
 
-        /* ==========================================================================
-           VICTORY SCREEN & CELEBRATION
-           ========================================================================== */
         #victory-menu .title {
             color: #ffcc00;
             text-shadow: 0 0 20px #ffcc00;
@@ -966,9 +932,6 @@
             margin: 15px 0;
         }
 
-        /* ==========================================================================
-           MOBILE / TOUCH CONTROLS
-           ========================================================================== */
         #mobile-controls {
             position: fixed;
             bottom: 0; left: 0; width: 100%;
@@ -1459,9 +1422,6 @@
     </div>
 
     <script>
-        /* ==========================================================================
-           CORE DOM REFERENCES & INITIALIZATION
-           ========================================================================== */
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const gameContainer = document.getElementById('game-container');
@@ -1484,9 +1444,6 @@
         const inspectCanvasP1 = document.getElementById('canvas-inspect-p1');
         const inspectCtxP1 = inspectCanvasP1.getContext('2d');
 
-        /* ==========================================================================
-           CONFIGURABLE GAME PARAMETERS (ORIGINAL PRESERVED & EXPANDED)
-           ========================================================================== */
         const CONFIG = {
             GRAVITY: 0.05, THRUST: 0.14, TURN_SPEED: 0.08, MAX_SPEED: 6,
             FRICTION: 0.999, TORPEDO_SPEED: 7, TORPEDO_LIFE: 100, STAR_MASS: 15,
@@ -1520,9 +1477,6 @@
 
         const MAX_HP = 4;
 
-        /* ==========================================================================
-           KEYBINDS STATE (ORIGINAL PRESERVED)
-           ========================================================================== */
         const BINDS = {
             1: { thrust: 'KeyW', left: 'KeyA', right: 'KeyD', fire: 'KeyF', reverse: 'KeyS' },
             2: { thrust: 'ArrowUp', left: 'ArrowLeft', right: 'ArrowRight', fire: 'KeyM', reverse: 'ArrowDown' },
@@ -1534,9 +1488,6 @@
             menu: 'Escape'
         };
 
-        /* ==========================================================================
-           GAME STATE & ANALYTICS TRACKING
-           ========================================================================== */
         let gameState = 'MENU'; 
         // Whether ships/torpedoes/AI are actively simulating this frame. For
         // offline matches this tracks gameState === 'PLAYING' exactly (pausing
@@ -1568,16 +1519,6 @@
             4: { shots: 0, hits: 0, starDeaths: 0, wins: 0 }
         };
 
-        /* ==========================================================================
-           RANK & MMR SYSTEM
-           Bronze -> Silver -> Gold -> Platinum -> Elite -> Diamond -> Champion -> Legend
-           Each tier has 3 divisions; winning climbs a division (or promotes a
-           tier), losing drops a division (or demotes a tier). New profiles are
-           Unranked until 10 RANKED matches are played; the average performance
-           across those placement matches sets the starting tier/division.
-           Only Online Ranked matches touch any of this — Casual and FFA never
-           change MMR, rank, or placement progress.
-           ========================================================================== */
         const RANK_TIERS = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Elite', 'Diamond', 'Champion', 'Legend'];
         const DIVISION_LABELS = ['I', 'II', 'III'];
         const RANK_COLORS = {
@@ -1615,11 +1556,6 @@
             return { tierIndex, division };
         }
 
-        // Records the result of a RANKED match only. During the first 10 ranked
-        // matches, MMR accumulates quietly while the profile stays "Unranked";
-        // once placements finish, the final MMR sets the starting tier/division
-        // and normal division-by-division climbing/demotion begins. Returns the
-        // signed MMR delta so the UI can display it.
         function recordRankedResult(profile, won) {
             const delta = won ? (18 + Math.floor(Math.random() * 10)) : -(14 + Math.floor(Math.random() * 8));
             profile.mmr = Math.max(0, profile.mmr + delta);
@@ -1736,14 +1672,6 @@
             if (inspectorName) inspectorName.innerText = PLAYER_PROFILE.name.toUpperCase();
         }
 
-        /* ==========================================================================
-           LOCAL SAVE SYSTEM (RANK, PARAMETERS, VISUALS & KEY BINDS)
-           Persists to localStorage so progress and preferences survive a
-           reload/browser restart. This only works when the file is opened as
-           a normal page in your own browser — a sandboxed in-chat preview may
-           block localStorage entirely, in which case saves silently fall back
-           to in-memory-only (nothing persists once that preview is closed).
-           ========================================================================== */
         const SAVE_KEY = 'spacewar_save_v1';
         const SAVE_CONFIG_KEYS = ['GRAVITY', 'THRUST', 'TURN_SPEED', 'MAX_SPEED', 'FRICTION',
             'TORPEDO_SPEED', 'TORPEDO_LIFE', 'STAR_MASS', 'P1_COLOR', 'P1_SHIP', 'P1_TORPEDO_COLOR',
@@ -1815,8 +1743,6 @@
             refreshRankDisplays();
         }
 
-        // Load any previously saved profile/parameters/binds right away, before
-        // ships are constructed below (they read CONFIG.P1_SHIP/P1_COLOR at birth).
         loadGameData();
 
         let deleteConfirmPending = false;
@@ -1840,17 +1766,6 @@
             }
         });
 
-        /* ==========================================================================
-           SIMULATED ONLINE PRESENCE & MATCHMAKING
-           Online Ranked / Casual / FFA all route through this layer. Matching
-           against real players requires a live backend (a matchmaking + relay
-           service, the kind of thing that gets stood up from a GitHub-hosted
-           project) which a single static HTML file cannot host on its own. The
-           functions below simulate that service end-to-end (a populated lobby,
-           opponent selection, ship/color hand-off, MMR reporting) behind the
-           same interface a real backend would fill, so every UI flow here is
-           fully playable today and only the transport needs swapping later.
-           ========================================================================== */
         const ONLINE_BOT_NAMES = ['Orion', 'Vega', 'Nyx', 'Zephyr', 'Kestrel', 'Talon', 'Rhea', 'Juno', 'Draven', 'Astra', 'Halcyon', 'Cipher', 'Rigel', 'Lyra', 'Corvus', 'Phobos'];
 
         function randomBotName() {
@@ -1958,9 +1873,6 @@
             return picked;
         }
 
-        /* ==========================================================================
-           WEB AUDIO API - RETRO 8-BIT SOUND SYNTHESIZER
-           ========================================================================== */
         class RetroAudioEngine {
             constructor() {
                 this.ctx = null;
@@ -2106,9 +2018,6 @@
 
         const SFX = new RetroAudioEngine();
 
-        /* ==========================================================================
-           BACKGROUND STARS GENERATOR & MATRIX RAIN
-           ========================================================================== */
         const bgStars = [];
         for (let i = 0; i < 180; i++) {
             bgStars.push({
@@ -2132,9 +2041,6 @@
             });
         }
 
-        /* ==========================================================================
-           FULLSCREEN / ENLARGE CIRCLE MODE (ORIGINAL ENHANCED)
-           ========================================================================== */
         function toggleFullscreen() {
             SFX.playMenuClick();
             const btn = document.getElementById('btn-toggle-fullscreen');
@@ -2157,9 +2063,6 @@
 
         document.getElementById('btn-toggle-fullscreen').addEventListener('click', toggleFullscreen);
 
-        /* ==========================================================================
-           CRT HEAVINESS & EFFECT CONTROL SYSTEM
-           ========================================================================== */
         function applyCRTHeaviness(level) {
             const container = document.getElementById('game-container');
             const valLabel = document.getElementById('val-crtheavy');
@@ -2192,9 +2095,6 @@
             saveGameData();
         });
 
-        /* ==========================================================================
-           SETTINGS PARAMETERS & UI BINDINGS (ORIGINAL ENHANCED)
-           ========================================================================== */
         function updateSettingsUI() {
             const floatInputs = [
                 { id: 'gravity', key: 'GRAVITY', isFloat: true },
@@ -2266,13 +2166,6 @@
             }
         }
 
-        /* ==========================================================================
-           VISUALS & PERSONALIZATION WINDOW BINDINGS
-           Ship class, ship color, overall theme, and typography — all in one
-           dedicated window, separate from the physics-focused Game Parameters.
-           ========================================================================== */
-        // Builds the 3x3 grid of clickable ship-preview buttons once (each
-        // icon rendered with the same drawShipShape() the real game uses).
         let shipPickerBuilt = false;
         function buildShipPicker() {
             if (shipPickerBuilt) return;
@@ -2396,14 +2289,11 @@
             return str.charAt(0).toUpperCase() + str.slice(1);
         }
 
-        // Trims, strips anything that isn't a letter/number/space/dash/underscore,
-        // caps the length, and falls back to "PILOT" if nothing usable is left.
         function sanitizeUsername(raw) {
             const cleaned = (raw || '').trim().replace(/[^a-zA-Z0-9 _-]/g, '').slice(0, 16);
             return cleaned.length > 0 ? cleaned : 'PILOT';
         }
-
-        // Main Menu Navigation: Online Ranked / Online Casual / Offline Play
+        
         let onlineContext = 'ranked'; // 'ranked' | 'casual'
 
         function openOnlineWindow(context) {
@@ -2490,9 +2380,6 @@
             saveGameData();
         });
 
-        /* ==========================================================================
-           CONTROLS MENU LOGIC (ORIGINAL PRESERVED)
-           ========================================================================== */
         let bindingButton = null;
 
         function updateControlsUI() {
@@ -2571,9 +2458,6 @@
             if (menuName === 'VISUALS') { visualsMenuUI.style.display = 'flex'; updateVisualsUI(); }
         }
 
-        /* ==========================================================================
-           KEYBOARD INPUT TRACKING (ORIGINAL PRESERVED)
-           ========================================================================== */
         const keys = {};
         window.addEventListener('keydown', e => {
             if (bindingButton) {
@@ -2608,13 +2492,6 @@
         });
         window.addEventListener('keyup', e => keys[e.code] = false);
 
-        /* ==========================================================================
-           MOBILE / TOUCH CONTROLS (PLAYER 1 ONLY)
-           Each on-screen button drives the exact same `keys[...]` state that
-           the keyboard does, so Ship.update()/AIPilot never need to know the
-           difference. Buttons only appear on touch-capable devices, and only
-           while a match is actually in progress.
-           ========================================================================== */
         function setMobileControlsActive(active) {
             if (!IS_TOUCH_DEVICE) return;
             mobileControlsUI.classList.toggle('active', active);
@@ -2648,9 +2525,6 @@
         bindMobileButton('mc-right', 'right');
         bindMobileButton('mc-fire', 'fire');
 
-        /* ==========================================================================
-           ADVANCED PARTICLE & DEBRIS ENGINE
-           ========================================================================== */
         class Particle {
             constructor(x, y, vx, vy, color, size, life, type = 'normal') {
                 this.x = x; this.y = y; this.vx = vx; this.vy = vy;
@@ -2708,11 +2582,6 @@
             }
         }
 
-        /* ==========================================================================
-           AI PILOT - CYBERNETIC FLIGHT CONTROLLER
-           ========================================================================== */
-        // In a 2v2 match, ships 1 & 3 are Team A and 2 & 4 are Team B; every
-        // other match type treats each ship as its own team (free-for-all).
         function getTeam(playerID) {
             if (CONFIG.MATCH_TYPE === 'online_casual_2v2') {
                 return (playerID === 1 || playerID === 3) ? 'A' : 'B';
@@ -2854,9 +2723,6 @@
             }
         }
 
-        /* ==========================================================================
-           GAME ENTITIES (TORPEDO & SHIP CLASSES PRESERVED & ENHANCED)
-           ========================================================================== */
         class Torpedo {
             constructor(x, y, vx, vy, ownerID, color) {
                 this.x = x; this.y = y; this.vx = vx; this.vy = vy;
@@ -2899,7 +2765,6 @@
                 }
 
                 if (CONFIG.GAME_MODE === 'infinitetorpedo' || CONFIG.TORPEDO_LIFE > 100) {
-                    // Never expire from range/lifetime — wrap around the screen instead
                     if (this.x < 0) this.x += canvas.width;
                     if (this.x > canvas.width) this.x -= canvas.width;
                     if (this.y < 0) this.y += canvas.height;
@@ -2920,10 +2785,6 @@
                 ctx.restore();
             }
         }
-
-        // Single source of truth for every ship class's wireframe outline.
-        // Used by Ship.draw(), the rotating inspector panel, and the ship
-        // picker icons — add a new ship here once and it shows up everywhere.
         function drawShipShape(c, type) {
             c.beginPath();
             if (type === 'wedge') {
@@ -3055,7 +2916,6 @@
                     triggerRoundEnd();
                 }
 
-                // Update Inspector Diagnostics Live Data
                 this.updateDiagnostics(speed, isThrusting);
             }
 
@@ -3170,10 +3030,6 @@
         const p3 = new Ship('cruiser', '#00e5ff', 3);
         const p4 = new Ship('dart', '#ff8800', 4);
         const aiPilots = { 2: new AIPilot(p2), 3: new AIPilot(p3), 4: new AIPilot(p4) };
-
-        /* ==========================================================================
-           ROTATING SIDE PLAYER INSPECTOR RENDERER
-           ========================================================================== */
         let inspectRotationAngle = 0;
 
         function renderSideInspectors() {
@@ -3207,12 +3063,6 @@
             });
         }
 
-        /* ==========================================================================
-           GAME FLOW CONTROL & MATCH LAUNCH ENGINE
-           ========================================================================== */
-
-        // Configures ACTIVE_SHIPS / AI_CONTROLLED_IDS / CONFIG for an offline
-        // match (vs AI or vs a local friend), then starts it.
         function launchOffline() {
             const opponent = document.getElementById('inp-offline-opponent').value; // 'ai' | 'friend'
             CONFIG.MATCH_TYPE = (opponent === 'ai') ? 'offline_ai' : 'offline_friend';
@@ -3288,12 +3138,6 @@
             launchOnlineMatch();
         });
 
-        /* ==========================================================================
-           MATCH START COUNTDOWN (5-4-3-2-1-GO)
-           Runs before ships can move/fire, at the start of a fresh match and
-           again after each point is scored mid-match. Resuming a paused match
-           does NOT re-trigger it — only a genuine reset of ship positions does.
-           ========================================================================== */
         let countdownValue = 0;
         let countdownTimer = null;
 
@@ -3373,8 +3217,7 @@
             hudUI.style.display = 'none';
             setMobileControlsActive(false);
             switchMenu('MAIN');
-            // Online matches keep simulating behind the menu (you can't pause
-            // a live opponent) — only offline matches actually stop.
+
             if (!CONFIG.IS_ONLINE) simulationActive = false;
             const show = roundStarted ? 'inline-flex' : 'none';
             document.getElementById('btn-resume-match').style.display = show;
@@ -3389,9 +3232,7 @@
         // cleanly to the main menu.
         let rankedLeaveTimeoutUntil = 0;
         let rankedTimeoutInterval = null;
-
-        // Ticks the Find Match button's disabled/cooldown state after a ranked
-        // forfeit. Safe to call any time — it's a no-op once the cooldown ends.
+        
         function updateRankedTimeoutUI() {
             const btn = document.getElementById('btn-online-findmatch');
             const label = document.getElementById('online-searching-label');
@@ -3419,9 +3260,6 @@
             setMobileControlsActive(false);
             simulationActive = false;
 
-            // Leaving a ranked match before it's decided counts as a forfeit
-            // loss and applies a short matchmaking cooldown — same as most
-            // ranked online games use to discourage leaving.
             if (CONFIG.IS_RANKED && roundStarted && !isGameOver) {
                 recordRankedResult(PLAYER_PROFILE, false);
                 refreshRankDisplays();
@@ -3522,8 +3360,6 @@
             SFX.playMenuClick();
             roundStarted = false;
             if (CONFIG.IS_ONLINE) {
-                // "Play Again" online means a fresh quick match, not literally
-                // replaying the same (simulated) opponents.
                 menuUI.style.display = 'flex';
                 switchMenu('ONLINE');
                 startOnlinePresence();
@@ -3546,9 +3382,6 @@
             isGameOver = false;
         }
 
-        /* ==========================================================================
-           CANVAS RENDERERS (STARS, GRAVITY WELL, & MATRIX RAIN)
-           ========================================================================== */
         function drawStar() {
             ctx.save();
             ctx.fillStyle = CONFIG.STAR_COLOR;
@@ -3582,7 +3415,6 @@
             }
 
             if (CONFIG.THEME_NAME === 'vaporwave' || CONFIG.THEME_NAME === 'blueprint') {
-                // Render perspective grid lines
                 ctx.strokeStyle = CONFIG.THEME_NAME === 'vaporwave' ? "rgba(255, 0, 193, 0.18)" : "rgba(100, 255, 218, 0.12)";
                 ctx.lineWidth = 1;
                 const gridSize = 50;
@@ -3612,9 +3444,6 @@
             });
         }
 
-        /* ==========================================================================
-           COLLISION DETECTION SYSTEM (ORIGINAL PRESERVED & ENHANCED)
-           ========================================================================== */
         function checkCollisions() {
             const starX = canvas.width / 2; const starY = canvas.height / 2;
 
@@ -3674,9 +3503,6 @@
             }
         }
 
-        /* ==========================================================================
-           HUD SCOREBOARD RENDERER (ORIGINAL PRESERVED)
-           ========================================================================== */
         function drawScores() {
             ctx.save();
             ctx.font = 'bold 32px ' + (CONFIG.FONT_FAMILY || 'monospace');
@@ -3720,9 +3546,6 @@
         ACTIVE_SHIPS = [p1, p2];
         AI_CONTROLLED_IDS = [];
 
-        /* ==========================================================================
-           MAIN GAME ENGINE RENDER LOOP
-           ========================================================================== */
         function gameLoop() {
             // Render Background Color Tint
             let bg = CONFIG.BG_COLOR;
